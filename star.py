@@ -1,9 +1,10 @@
-import requests
+import os
 import time
+
+import requests
 from stellar_base.address import Address
 from stellar_base.builder import Builder
 from stellar_base.keypair import Keypair
-import os
 
 
 class GetKeys:
@@ -33,10 +34,12 @@ class GetKeys:
 
 
 class Stelar():
-    def __init__(self, publickey, testnet=False, local=False):
-        self.pulic_key = publickey
+    def __init__(self, publickey, testnet=True, local=False):
+        self.public_key = publickey
         self.testnet = testnet
         self.local = local
+        self.docker_horizon = "http://localhost:8000/friendbot?addr="
+        self.main_horizon = "https://horizon-testnet.stellar.org/friendbot?addr="
 
     def get_wallet(self):
         """"Get balance from public key
@@ -47,16 +50,16 @@ class Stelar():
 
         if self.local:
             try:
-                r = requests.get('http://localhost:8000/friendbot?addr=' + self.pulic_key, timeout=1)
+                requests.get(self.docker_horizon + self.public_key, timeout=2)
             except requests.exceptions.ConnectionError:
-                r = requests.get('https://horizon-testnet.stellar.org/friendbot?addr=' + self.pulic_key)
+                requests.get(self.main_horizon + self.public_key)
         else:
-            r = requests.get('https://horizon-testnet.stellar.org/friendbot?addr=' + self.pulic_key)
+            requests.get(self.main_horizon + self.public_key)
 
         if self.testnet:
-            self.address = Address(address=self.pulic_key)
+            self.address = Address(address=self.public_key)
         else:
-            self.address = Address(address=self.pulic_key, network='public')
+            self.address = Address(address=self.public_key, network='public')
 
         self.address.get()  # get the updated information
         self.wallet = self.address.balances
@@ -76,7 +79,7 @@ class Stelar():
         """
         for asset in self.wallet:
             if asset.get('asset_code') == token:
-                return asset.get("balance") + " XML"
+                return asset.get("balance") + " token"
         return "Token not found."
 
     def get_balance(self, balance):
@@ -97,7 +100,32 @@ class Stelar():
             else:
                 print(self.get_token_balance(token))
 
-    def send(self, seed, public_key, amount, comment="", asset="XML"):
+    def demo_balance(self):
+        """
+        Display balance info for demo
+        """
+        wallet = self.get_wallet()
+        xlm = self.get_native_balance()
+        token = self.get_token_balance("PYTH")
+        print("Wallet: {}\nXLM:  {}\nPYTH: {}".format(wallet, xlm, token))
+
+
+def run_as_standalone():
+    """
+    Run script as stand_alone
+    """
+
+    def demo(local_docker=True):
+        """
+        Display demo account information
+        :param local_docker: local docker instance
+        """
+        account = Stelar(publickey="GABGKZCXBGDOPBFNWOHLOIJU4DFA3VYKWMPJAMKV4QS4YYJ5IK3CNWNQ",
+                         testnet=True, local=local_docker)
+        account.demo_balance()
+
+    def send_stellar(seed, public_key, amount, currency="XLM", asset_issuer=False, comment="",
+                     testnet=True):
         """
         Sends stellar to public address
         :param testnet: boolean parameter
@@ -105,26 +133,18 @@ class Stelar():
         :param amount: amount you want to send
         :param comment: comment in transaction string length <= 28 bytes
         :param public_key: public key, where you want to send lumen
-        :param asset: by default lumen XML
         :return: return transaction info
         """
-        if self.testnet:
+        if testnet:
             builder = Builder(secret=seed)
         else:
             builder = Builder(secret=seed, network='public')
         builder.add_text_memo(comment)
-        builder.append_payment_op(public_key, amount, asset)
+        builder.append_payment_op(public_key, amount, currency, asset_issuer)
         builder.sign()
         return builder.submit()
 
-
-def run_as_standalone():
-    account = Stelar(publickey="GABGKZCXBGDOPBFNWOHLOIJU4DFA3VYKWMPJAMKV4QS4YYJ5IK3CNWNQ", testnet=True)
-    wallet = account.get_wallet()
-    stellar = account.get_native_balance()
-    sudocoin = account.get_token_balance("sudokoin")
-    account.loop_balance()
-
+    demo()
 
 
 if __name__ == "__main__":
